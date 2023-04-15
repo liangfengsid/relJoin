@@ -22,6 +22,7 @@ import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.execution.adaptive.LogicalQueryStageStrategy
+import org.apache.spark.sql.execution.cost.LearnableCostJoinSelection
 import org.apache.spark.sql.execution.datasources.{DataSourceStrategy, FileSourceStrategy}
 import org.apache.spark.sql.execution.datasources.v2.DataSourceV2Strategy
 
@@ -41,7 +42,8 @@ class SparkPlanner(val session: SparkSession, val experimentalMethods: Experimen
       SpecialLimits ::
       Aggregation ::
       Window ::
-      JoinSelection ::
+      new LearnableCostJoinSelection(session) ::
+//      JoinSelection ::
       InMemoryScans ::
       SparkScripts ::
       BasicOperators :: Nil)

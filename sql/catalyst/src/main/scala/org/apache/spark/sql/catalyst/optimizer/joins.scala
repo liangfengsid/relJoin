@@ -273,6 +273,31 @@ trait JoinSelectionHelper {
     )
   }
 
+  def getCostBasedBroadcastBuildSide(
+      left: LogicalPlan,
+      right: LogicalPlan,
+      joinType: JoinType,
+      hint: JoinHint,
+      hintOnly: Boolean,
+      conf: SQLConf): Option[BuildSide] = {
+    val buildLeft = if (hintOnly) {
+      hintToBroadcastLeft(hint)
+    } else {
+      !hintToNotBroadcastLeft(hint)
+    }
+    val buildRight = if (hintOnly) {
+      hintToBroadcastRight(hint)
+    } else {
+      !hintToNotBroadcastRight(hint)
+    }
+    getBuildSide(
+      canBuildBroadcastLeft(joinType) && buildLeft,
+      canBuildBroadcastRight(joinType) && buildRight,
+      left,
+      right
+    )
+  }
+
   def getShuffleHashJoinBuildSide(
       left: LogicalPlan,
       right: LogicalPlan,
@@ -304,8 +329,43 @@ trait JoinSelectionHelper {
     )
   }
 
+  def getCostBasedShuffleHashJoinBuildSide(
+       left: LogicalPlan,
+       right: LogicalPlan,
+       joinType: JoinType,
+       hint: JoinHint,
+       hintOnly: Boolean,
+       conf: SQLConf): Option[BuildSide] = {
+    val buildLeft = if (hintOnly) {
+      hintToShuffleHashJoinLeft(hint)
+    } else {
+      hintToPreferShuffleHashJoinLeft(hint) ||
+        !conf.preferSortMergeJoin ||
+        forceApplyShuffledHashJoin(conf)
+    }
+    val buildRight = if (hintOnly) {
+      hintToShuffleHashJoinRight(hint)
+    } else {
+      hintToPreferShuffleHashJoinRight(hint) ||
+        !conf.preferSortMergeJoin ||
+        forceApplyShuffledHashJoin(conf)
+    }
+    getBuildSide(
+      canBuildShuffledHashJoinLeft(joinType) && buildLeft,
+      canBuildShuffledHashJoinRight(joinType) && buildRight,
+      left,
+      right
+    )
+  }
+
   def getSmallerSide(left: LogicalPlan, right: LogicalPlan): BuildSide = {
     if (right.stats.sizeInBytes <= left.stats.sizeInBytes) BuildRight else BuildLeft
+  }
+
+  def getSmallerCountSide(left: LogicalPlan, right: LogicalPlan): BuildSide = {
+    val leftCount: BigInt = left.stats.rowCount.getOrElse(1)
+    val rightCount: BigInt = right.stats.rowCount.getOrElse(1)
+    if (rightCount <= leftCount) BuildRight else BuildLeft
   }
 
   /**
@@ -426,6 +486,24 @@ trait JoinSelectionHelper {
       // returns the smaller side base on its estimated physical size, if we want to build the
       // both sides.
       Some(getSmallerSide(left, right))
+    } else if (canBuildLeft) {
+      Some(BuildLeft)
+    } else if (canBuildRight) {
+      Some(BuildRight)
+    } else {
+      None
+    }
+  }
+
+  private def getCostBasedBuildSide(
+      canBuildLeft: Boolean,
+      canBuildRight: Boolean,
+      left: LogicalPlan,
+      right: LogicalPlan): Option[BuildSide] = {
+    if (canBuildLeft && canBuildRight) {
+      // returns the smaller side base on its estimated row count, if we want to build the
+      // both sides.
+      Some(getSmallerCountSide(left, right))
     } else if (canBuildLeft) {
       Some(BuildLeft)
     } else if (canBuildRight) {

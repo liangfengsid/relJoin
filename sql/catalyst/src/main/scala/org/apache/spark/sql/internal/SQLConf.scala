@@ -589,6 +589,30 @@ object SQLConf {
     .checkValues(Set("TRACE", "DEBUG", "INFO", "WARN", "ERROR"))
     .createWithDefault("debug")
 
+  val ADAPTIVE_COST_JOIN_ENABLE = buildConf("spark.sql.adaptive.cost.join.enabled")
+    .doc("When true, enable adaptive join query execution, which re-optimizes the plan" +
+      "join method in the middle of query execution, based on cost calculated from " +
+      "accurate runtime statistics.")
+    .version("3.3.2")
+    .booleanConf
+    .createWithDefault(false)
+
+  val ADAPTIVE_MAX_VALID_COST = buildConf("spark.sql.adaptive.max.valid.cost")
+    .doc("The max cost value that is considered as a valid cost when enabling " +
+      "spark.sql.adaptive.cost.join.enabled")
+    .version("3.3.2")
+    .longConf
+    .checkValue(_ > 0, "The value of spark.sql.shuffle.partitions must be positive")
+    .createWithDefault(107374182400L)
+
+  val ADAPTIVE_NETWORK_WEIGHT = buildConf("spark.sql.adaptive.network.weight")
+    .doc("The weight of network cost compared to cpu cost in calculating the join" +
+      "selection method cost")
+    .version("3.3.2")
+    .longConf
+    .checkValue(_ >= 0, "The value of spark.sql.shuffle.partitions must be nonnegative")
+    .createWithDefault(1)
+
   val ADVISORY_PARTITION_SIZE_IN_BYTES =
     buildConf("spark.sql.adaptive.advisoryPartitionSizeInBytes")
       .doc("The advisory size in bytes of the shuffle partition during adaptive optimization " +
@@ -4033,6 +4057,12 @@ class SQLConf extends Serializable with Logging {
   def adaptiveExecutionEnabled: Boolean = getConf(ADAPTIVE_EXECUTION_ENABLED)
 
   def adaptiveExecutionLogLevel: String = getConf(ADAPTIVE_EXECUTION_LOG_LEVEL)
+
+  def adaptiveCostJoinEnable: Boolean = getConf(ADAPTIVE_COST_JOIN_ENABLE)
+
+  def adaptiveMaxValidCost: Long = getConf(ADAPTIVE_MAX_VALID_COST)
+
+  def adaptiveNetworkWeight: Long = getConf(ADAPTIVE_NETWORK_WEIGHT)
 
   def fetchShuffleBlocksInBatch: Boolean = getConf(FETCH_SHUFFLE_BLOCKS_IN_BATCH)
 
