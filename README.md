@@ -1,124 +1,108 @@
-# Apache Spark
+# AdaptJoin
 
-Spark is a unified analytics engine for large-scale data processing. It provides
-high-level APIs in Scala, Java, Python, and R, and an optimized engine that
-supports general computation graphs for data analysis. It also supports a
-rich set of higher-level tools including Spark SQL for SQL and DataFrames,
-pandas API on Spark for pandas workloads, MLlib for machine learning, GraphX for graph processing,
-and Structured Streaming for stream processing.
+AdaptJoin implements a cost-based distributed join method optimization rule on top 
+of Spark SQL. It selects optimal join methods for logical joins when planning 
+the physical plan for an optimized logical plan. It replaces the original
+"JoinSelection" rule. 
+The AdaptJoin feature is enabled by setting the configuration 
+option "spark.sql.adaptive.cost.join.enabled"
+true. 
 
-<https://spark.apache.org/>
-
-[![GitHub Action Build](https://github.com/apache/spark/actions/workflows/build_and_test.yml/badge.svg?branch=master&event=push)](https://github.com/apache/spark/actions/workflows/build_and_test.yml?query=branch%3Amaster+event%3Apush)
-[![AppVeyor Build](https://img.shields.io/appveyor/ci/ApacheSoftwareFoundation/spark/master.svg?style=plastic&logo=appveyor)](https://ci.appveyor.com/project/ApacheSoftwareFoundation/spark)
-[![PySpark Coverage](https://codecov.io/gh/apache/spark/branch/master/graph/badge.svg)](https://codecov.io/gh/apache/spark)
+This project is a fork of the [Spark project](https://github.com/apache/spark).
 
 
-## Online Documentation
+## Prepare
+The project can run locally or in distributed data processing platforms such as YARN. 
+If you want to run it on YARN with Hadoop distributed file system(HDFS), 
+you need to have YARN properly deployed in a cluster.
+Please refer to the
+[Hadoop website](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/ClusterSetup.html)
+to install and setup a YARN and HDFS cluster. 
+The default Hadoop version matching this project is v3.3.2.
 
-You can find the latest Spark documentation, including a programming
-guide, on the [project web page](https://spark.apache.org/documentation.html).
-This README file only contains basic setup instructions.
-
-## Building Spark
-
-Spark is built using [Apache Maven](https://maven.apache.org/).
-To build Spark and its example programs, run:
-
-```bash
-./build/mvn -DskipTests clean package
-```
-
-(You do not need to do this if you downloaded a pre-built package.)
-
-More detailed documentation is available from the project site, at
-["Building Spark"](https://spark.apache.org/docs/latest/building-spark.html).
-
-For general development tips, including info on developing Spark using an IDE, see ["Useful Developer Tools"](https://spark.apache.org/developer-tools.html).
-
-## Interactive Scala Shell
-
-The easiest way to start using Spark is through the Scala shell:
+When HDFS and YARN are ready, 
+the YARN home path is exported as $HADOOP_HOME.
+Start the HDFS and YARN cluster.  
 
 ```bash
-./bin/spark-shell
+$HADOOP_HOME/sbin/start-all.sh
 ```
 
-Try the following command, which should return 1,000,000,000:
 
-```scala
-scala> spark.range(1000 * 1000 * 1000).count()
-```
+## Compile and Deploy
 
-## Interactive Python Shell
-
-Alternatively, if you prefer Python, you can use the Python shell:
+Compile the Spark project with Hadoop and YARN support. $SPARK_HOME is the path of the project directory. 
 
 ```bash
-./bin/pyspark
+cd $SPARK_HOME && build/sbt -Pyarn -Dhadoop.version=3.3.2 package
 ```
 
-And run the following command, which should also return 1,000,000,000:
+Deploy Spark in the cluster can be as simple as copying the built project into the same path 
+in every node in the YARN cluster.
 
-```python
->>> spark.range(1000 * 1000 * 1000).count()
+For other details about deploying and configurating Spark on YARN, refer to 
+the [Spark deploying page](https://spark.apache.org/docs/latest/running-on-yarn.html).
+
+## Generate TPC-DS datasets.
+The TPC-DS dataset generater project is integrated as a submodule in this project. 
+Download the TPC-DS dataset generater by updating the submodule.
+```bash
+git submodule update
 ```
 
-## Example Programs
+Make the TPC-DS generater project, providing the type of the operating system. 
+For example, if it is built in Linux or Mac OSX, run the following command. 
+Note that neccessary compiling tools are needed for comiplation 
+depending on the operating system. 
+Please refer to: 
+https://github.com/gregrahn/tpcds-kit
+```bash
+cd tpcds-kit/tools
+# Linux
+make OS=LINUX
+# Mac OSX
+make OS=MACOS
+```
 
-Spark also comes with several sample programs in the `examples` directory.
-To run one of them, use `./bin/run-example <class> [params]`. For example:
+Create the directory for the datasets, and generate a unit-scaled TPC-DS dataset.
 
 ```bash
-./bin/run-example SparkPi
+cd $SPARK_HOME
+mkdir ~/benchmark/tpcds/
+tpcds-kit/tools/dsdgen -dir ~/benchmark/tpcds/ -scale 1 -verbose y -terminate n
 ```
 
-will run the Pi example locally.
+Transform the dataset format to parquet for Spark SQL queries. 
+```bash
+build/sbt "sql/test:runMain org.apache.spark.sql.GenTPCDSDataFromFile --dsdgenDir ~/benchmark/tpcds --location ~/benchmark/tpcdsTable --scaleFactor 1"
+```
 
-You can set the MASTER environment variable when running examples to submit
-examples to a cluster. This can be a mesos:// or spark:// URL,
-"yarn" to run on YARN, and "local" to run
-locally with one thread, or "local[N]" to run locally with N threads. You
-can also use an abbreviated class name if the class is in the `examples`
-package. For instance:
+
+If you run the project in the YARN cluster, ppload the dataset to HDFS.
+```bash
+$HADOOP_HOME/hadoop fs -mkdir /benchmark
+$HADOOP_HOME/hadoop fs -put -d ~/benchmark/tpcdsTable/ /benchmark/
+```
+
+## Run the benchmark
+Execute the TPC-DS queries in the YARN cluster in the client mode. 
 
 ```bash
-MASTER=spark://host:7077 ./bin/run-example SparkPi
+$SPARK_HOME/spark-submit run-example --master yarn --executor-memory 4G --num-executors 10 org.apache.spark.examples.sql.TPCDSRun hdfs:///benchmark/tpcdsTable false execute
 ```
 
-Many of the example programs print usage help if no params are given.
-
-## Running Tests
-
-Testing first requires [building Spark](#building-spark). Once Spark is built, tests
-can be run using:
+If you want to view the optimized logical query plan and the physical plan, 
+run with the "explain" option.
 
 ```bash
-./dev/run-tests
+$SPARK_HOME/spark-submit run-example --master yarn --executor-memory 4G --num-executors 10 org.apache.spark.examples.sql.TPCDSRun hdfs:///benchmark/tpcdsTable false explain
 ```
 
-Please see the guidance on how to
-[run tests for a module, or individual tests](https://spark.apache.org/developer-tools.html#individual-tests).
+You can also run the benchmark locally by specifying the local path of the dataset. 
 
-There is also a Kubernetes integration test, see resource-managers/kubernetes/integration-tests/README.md
+```bash
+$SPARK_HOME/spark-submit run-example org.apache.spark.examples.sql.TPCDSRun ~/home/benchmark/tpcdsTable false execute
+```
 
-## A Note About Hadoop Versions
-
-Spark uses the Hadoop core library to talk to HDFS and other Hadoop-supported
-storage systems. Because the protocols have changed in different versions of
-Hadoop, you must build Spark against the same version that your cluster runs.
-
-Please refer to the build documentation at
-["Specifying the Hadoop Version and Enabling YARN"](https://spark.apache.org/docs/latest/building-spark.html#specifying-the-hadoop-version-and-enabling-yarn)
-for detailed guidance on building for a particular distribution of Hadoop, including
-building for particular Hive and Hive Thriftserver distributions.
-
-## Configuration
-
-Please refer to the [Configuration Guide](https://spark.apache.org/docs/latest/configuration.html)
-in the online documentation for an overview on how to configure Spark.
-
-## Contributing
-
-Please review the [Contribution to Spark guide](https://spark.apache.org/contributing.html)
-for information on how to get started contributing to the project.
+## Evaluation Result Data
+The raw data result in the AdaptJoin paper can be found in [./eval](./eval/README.md).

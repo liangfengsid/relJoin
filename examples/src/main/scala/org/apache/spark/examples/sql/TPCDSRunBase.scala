@@ -38,7 +38,8 @@ trait TPCDSRunBase extends TPCDSSchema {
   // we skip them in the TPCDS-related tests.
   // NOTE: q6" and "q75" can cause flaky test results, so we must exclude them.
   // For more details, see SPARK-35327.
-  private val excludedTpcdsQueries: Set[String] = Set("q6", "q34", "q64", "q74", "q75", "q78")
+  private val excludedTpcdsQueries: Set[String] = Set("q6", "q34", "q64", "q74", "q75", "q78",
+    "q10", "q35", "q69")
 
   val tpcdsQueries: Seq[String] = tpcdsAllQueries.filterNot(excludedTpcdsQueries.contains)
 

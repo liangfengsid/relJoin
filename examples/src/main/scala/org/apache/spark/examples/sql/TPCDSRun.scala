@@ -39,6 +39,7 @@ import org.apache.spark.sql.internal.SQLConf
 object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
   var tpcdsDataPath = ""
   var injectStats = false
+  var command = "execute"
 
   def createTable(
         spark: SparkSession,
@@ -90,12 +91,36 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     SparkSession.setActiveSession(spark)
     withSQLConf(conf.toSeq: _*) {
       try {
-        val startTime = System.currentTimeMillis()
-        handleExceptions(getNormalizedResult(spark, query))
-        val endTime = System.currentTimeMillis()
-        val queryString = query.trim
-        val time = endTime - startTime
-        print(s"Query ${queryName} with conf ${confName} plan execution time: ${time} ms\n")
+
+        handleExceptions(getNormalizedResult(spark, queryName, confName, query))
+
+        tryPrintConf(spark, SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key)
+        tryPrintConf(spark, SQLConf.PREFER_SORTMERGEJOIN.key)
+        tryPrintConf(spark, "spark.sql.join.forceApplyShuffledHashJoin")
+        tryPrintConf(spark, SQLConf.ADAPTIVE_EXECUTION_ENABLED.key)
+
+      } catch {
+        case e: Throwable =>
+          val configs = conf.map {
+            case (k, v) => s"$k=$v"
+          }
+          throw new Exception(s"${e.getMessage}\nError using configs:\n${configs.mkString("\n")}")
+      }
+    }
+  }
+
+  private def explainQuery(
+      spark: SparkSession,
+      queryName: String,
+      confName: String,
+      query: String,
+      conf: Map[String, String]): Unit = {
+    SparkSession.setActiveSession(spark)
+    withSQLConf(conf.toSeq: _*) {
+      try {
+
+        explainQuery(spark, queryName, confName, query)
+
         tryPrintConf(spark, SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key)
         tryPrintConf(spark, SQLConf.PREFER_SORTMERGEJOIN.key)
         tryPrintConf(spark, "spark.sql.join.forceApplyShuffledHashJoin")
@@ -130,7 +155,8 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.SKEW_JOIN_ENABLED.key -> "false",
-    SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true")
+    SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true",
+    SQLConf.PREFER_SORTMERGEJOIN.key -> "true")
 
   val aqeCostBasedJoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
@@ -138,7 +164,8 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.SKEW_JOIN_ENABLED.key -> "false",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true",
-    SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true")
+    SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true",
+    SQLConf.PREFER_SORTMERGEJOIN.key -> "true")
 
   val aqeCostBased10JoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
@@ -147,7 +174,8 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     SQLConf.SKEW_JOIN_ENABLED.key -> "false",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true",
     SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true",
-    SQLConf.ADAPTIVE_NETWORK_WEIGHT.key -> "10")
+    SQLConf.ADAPTIVE_NETWORK_WEIGHT.key -> "10",
+    SQLConf.PREFER_SORTMERGEJOIN.key -> "true")
 
   val allJoinConfCombinations = Seq(
     aqeCostBasedJoinConf, aqeCostBasedJoinConf, aqeCostBasedJoinConf)
@@ -156,6 +184,10 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     val options = (0 to 1).map(i => if (i < args.length) Some(args(i)) else None)
 
     options.toArray match {
+      case Array(dataPath, inject, c) =>
+        tpcdsDataPath = dataPath.getOrElse("")
+        injectStats = JBoolean.valueOf(inject.getOrElse("true"))
+        command = c.getOrElse("execute")
       case Array(dataPath, inject) =>
         tpcdsDataPath = dataPath.getOrElse("")
         injectStats = JBoolean.valueOf(inject.getOrElse("true"))
@@ -210,7 +242,12 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
           else if (conf == broadcastHashJoinConf) s"broadcastHashJoinConf"
           else if (conf == shuffledHashJoinConf) s"shuffledHashJoinConf"
           else s"unknownJoinConf"
-          runQuery(spark, name, confName, queryString, conf)
+          if (command == "execute") {
+            runQuery(spark, name, confName, queryString, conf)
+          } else if (command == "explain") {
+            explainQuery(spark, name, confName, queryString, conf)
+          }
+
         }
       }
     } else {

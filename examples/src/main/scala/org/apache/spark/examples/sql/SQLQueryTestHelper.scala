@@ -23,8 +23,8 @@ import org.apache.spark.SparkException
 import org.apache.spark.sql.{AnalysisException, SparkSession}
 import org.apache.spark.sql.catalyst.planning.PhysicalOperation
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.{CostMode, SQLExecution}
 import org.apache.spark.sql.execution.HiveResult.hiveResultString
-import org.apache.spark.sql.execution.SQLExecution
 import org.apache.spark.sql.execution.command.{DescribeColumnCommand, DescribeCommandBase}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
@@ -50,7 +50,8 @@ trait SQLQueryTestHelper {
 
 
   /** Executes a query and returns the result as (schema of the output, normalized output). */
-  protected def getNormalizedResult(session: SparkSession, sql: String): (String, Seq[String]) = {
+  protected def getNormalizedResult(session: SparkSession, queryName: String,
+      confName: String, sql: String): (String, Seq[String]) = {
     // Returns true if the plan is supposed to be sorted.
     def isSorted(plan: LogicalPlan): Boolean = plan match {
       case _: Join | _: Aggregate | _: Generate | _: Sample | _: Distinct => false
@@ -65,12 +66,35 @@ trait SQLQueryTestHelper {
     val df = session.sql(sql)
     val schema = df.schema.catalogString
     // Get answer, but also get rid of the #1234 expression ids that show up in explain plans
+    val startTime = System.currentTimeMillis()
     val answer = SQLExecution.withNewExecutionId(df.queryExecution, Some(sql)) {
       hiveResultString(df.queryExecution.executedPlan).map(replaceNotIncludedMsg)
     }
+    val endTime = System.currentTimeMillis()
+    val time = endTime - startTime
+    print(s"Query ${queryName} with conf ${confName} plan execution time: ${time} ms\n")
 
     // If the output is not pre-sorted, sort it.
     if (isSorted(df.queryExecution.analyzed)) (schema, answer) else (schema, answer.sorted)
+  }
+
+  /** Explain a query and print */
+  protected def explainQuery(session: SparkSession, queryName: String,
+                                    confName: String, sql: String) = {
+    // Returns true if the plan is supposed to be sorted.
+    def isSorted(plan: LogicalPlan): Boolean = plan match {
+      case _: Join | _: Aggregate | _: Generate | _: Sample | _: Distinct => false
+      case _: DescribeCommandBase
+           | _: DescribeColumnCommand
+           | _: DescribeRelation
+           | _: DescribeColumn => true
+      case PhysicalOperation(_, _, Sort(_, true, _)) => true
+      case _ => plan.children.iterator.exists(isSorted)
+    }
+
+    val df = session.sql(sql)
+    print(s"Query ${queryName} with conf ${confName} plan explain string:\n")
+    print(df.queryExecution.explainString(CostMode))
   }
 
   /**

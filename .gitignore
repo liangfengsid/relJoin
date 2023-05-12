@@ -122,3 +122,6 @@ node_modules
 sql/catalyst/gen/
 sql/catalyst/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.tokens
 sql/catalyst/src/main/antlr4/org/apache/spark/sql/catalyst/parser/gen/
+
+# AdaptJoin
+command.sh
