@@ -40,6 +40,8 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
   var tpcdsDataPath = ""
   var injectStats = false
   var command = "execute"
+  var runTimes = 1
+  var joinStr = "AdaptJoin"
 
   def createTable(
         spark: SparkSession,
@@ -136,58 +138,70 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     }
   }
 
-  val sortMergeJoinConf = Map(
+  val shuffleSortJoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "-1",
     SQLConf.PREFER_SORTMERGEJOIN.key -> "true",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "false")
 
-  val broadcastHashJoinConf = Map(
+  val staticBroadcastHashJoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "false")
 
-  val shuffledHashJoinConf = Map(
+  val shuffleHashJoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "-1",
     "spark.sql.join.forceApplyShuffledHashJoin" -> "true",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "false")
 
-  val aqeJoinConf = Map(
+  val aqeBroadcastHashJoinConf = Map(
+    SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
+    SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
+    SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
+    SQLConf.SKEW_JOIN_ENABLED.key -> "false",
+    SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true")
+
+  val aqeAdaptJoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.SKEW_JOIN_ENABLED.key -> "false",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true",
-    SQLConf.PREFER_SORTMERGEJOIN.key -> "true")
+    SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true")
 
-  val aqeCostBasedJoinConf = Map(
+  val aqeAdaptJoinW10Conf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.SKEW_JOIN_ENABLED.key -> "false",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true",
     SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true",
-    SQLConf.PREFER_SORTMERGEJOIN.key -> "true")
+    SQLConf.ADAPTIVE_NETWORK_WEIGHT.key -> "10")
 
-  val aqeCostBased10JoinConf = Map(
+  val aqeAdaptJoinW100Conf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.SKEW_JOIN_ENABLED.key -> "false",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true",
     SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true",
-    SQLConf.ADAPTIVE_NETWORK_WEIGHT.key -> "10",
-    SQLConf.PREFER_SORTMERGEJOIN.key -> "true")
+    SQLConf.ADAPTIVE_NETWORK_WEIGHT.key -> "100")
 
-  val allJoinConfCombinations = Seq(
-    aqeCostBasedJoinConf, aqeCostBasedJoinConf, aqeCostBasedJoinConf)
+  val strConfMap = Map(
+    "ShuffleSortJoin" -> shuffleSortJoinConf,
+    "ShuffleHashJoin" -> shuffleHashJoinConf,
+    "BroadcastHashJoin" -> aqeBroadcastHashJoinConf,
+    "AdaptJoin" -> aqeAdaptJoinConf,
+    "AdaptJoinW100" -> aqeAdaptJoinW100Conf,
+    "AdaptJoinW10" -> aqeAdaptJoinW10Conf)
 
   def main(args: Array[String]): Unit = {
     val options = (0 to 1).map(i => if (i < args.length) Some(args(i)) else None)
 
     options.toArray match {
-      case Array(dataPath, inject, c) =>
+      case Array(dataPath, c, join, times) =>
         tpcdsDataPath = dataPath.getOrElse("")
-        injectStats = JBoolean.valueOf(inject.getOrElse("true"))
         command = c.getOrElse("execute")
+        joinStr = join.getOrElse("AdaptJoin")
+        runTimes = times.getOrElse("1").toInt
       case Array(dataPath, inject) =>
         tpcdsDataPath = dataPath.getOrElse("")
         injectStats = JBoolean.valueOf(inject.getOrElse("true"))
@@ -195,6 +209,9 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
         System.err.print("Usage: TPCDSRun dataPath injectStats\n")
         System.exit(1)
     }
+
+    val allJoinConfCombinations = (1 to runTimes)
+      .map(_ => strConfMap.getOrElse(joinStr, aqeAdaptJoinConf))
 
     val sparkBuilder = SparkSession
       .builder
@@ -215,10 +232,6 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
       }.getOrElse(allJoinConfCombinations)
     }
 
-    joinConfs.foreach(conf => require(
-      allJoinConfCombinations.contains(conf),
-      s"Join configurations [$conf] should be one of $allJoinConfCombinations"))
-
     if (tpcdsDataPath.nonEmpty && !tpcdsDataPath.startsWith("hdfs:")) {
       val nonExistentTables = tableNames.filterNot { tableName =>
         Files.exists(Paths.get(s"${tpcdsDataPath}/$tableName"))
@@ -238,9 +251,11 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
 
         joinConfs.foreach { conf =>
           System.gc()  // Workaround for GitHub Actions memory limitation, see also SPARK-37368
-          val confName = if (conf == sortMergeJoinConf) s"sortMergeJoinConf"
-          else if (conf == broadcastHashJoinConf) s"broadcastHashJoinConf"
-          else if (conf == shuffledHashJoinConf) s"shuffledHashJoinConf"
+          val confName = if (conf == shuffleSortJoinConf) s"ShuffleSortJoin"
+          else if (conf == shuffleHashJoinConf) s"ShuffleHashJoin"
+          else if (conf == aqeBroadcastHashJoinConf) s"BroadcastHashJoin"
+          else if (conf == aqeAdaptJoinConf) s"AdaptJoin"
+          else if (conf == aqeAdaptJoinW10Conf) s"AdaptJoinW10"
           else s"unknownJoinConf"
           if (command == "execute") {
             runQuery(spark, name, confName, queryString, conf)

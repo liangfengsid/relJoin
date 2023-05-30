@@ -85,23 +85,31 @@ $HADOOP_HOME/hadoop fs -put -d ~/benchmark/tpcdsTable/ /benchmark/
 ```
 
 ## Run the benchmark
-Execute the TPC-DS queries in the YARN cluster in the client mode. 
+To execute TPC-DS queries with different join method selection strategies, run command in the following format. 
 
 ```bash
-$SPARK_HOME/spark-submit run-example --master yarn --executor-memory 4G --num-executors 10 org.apache.spark.examples.sql.TPCDSRun hdfs:///benchmark/tpcdsTable false execute
+$SPARK_HOME/spark-submit run-example [SPARK_OPTIONS] org.apache.spark.examples.sql.TPCDSRun [DATASET_DIR] [COMMAND] [JOIN_STRATEGY] [RUN_TIMES]
+```
+
+The COMMAND can be "execute" or "explain", where "explain" will output the logical and physical query plans to the console. 
+The JOIN_STRATEGY can be "ShuffleSortJoin", "ShuffleHashJoin", "BroadcastHashJoin", "AdaptJoin", "AdaptJoinW10", "AdaptJoinW100".
+For example, to run AdaptJoin 3 times in the YARN cluster in the client mode, run: 
+
+```bash
+$SPARK_HOME/spark-submit run-example --master yarn --executor-memory 4G --num-executors 10 org.apache.spark.examples.sql.TPCDSRun hdfs:///benchmark/tpcdsTable execute AdaptJoin 3
 ```
 
 If you want to view the optimized logical query plan and the physical plan, 
 run with the "explain" option.
 
 ```bash
-$SPARK_HOME/spark-submit run-example --master yarn --executor-memory 4G --num-executors 10 org.apache.spark.examples.sql.TPCDSRun hdfs:///benchmark/tpcdsTable false explain
+$SPARK_HOME/spark-submit run-example --master yarn --executor-memory 4G --num-executors 10 org.apache.spark.examples.sql.TPCDSRun hdfs:///benchmark/tpcdsTable explain AdaptJoin 1
 ```
 
 You can also run the benchmark locally by specifying the local path of the dataset. 
 
 ```bash
-$SPARK_HOME/spark-submit run-example org.apache.spark.examples.sql.TPCDSRun ~/home/benchmark/tpcdsTable false execute
+$SPARK_HOME/spark-submit run-example org.apache.spark.examples.sql.TPCDSRun ~/home/benchmark/tpcdsTable execute AdaptJoin 3
 ```
 
 ## Evaluation Result Data
