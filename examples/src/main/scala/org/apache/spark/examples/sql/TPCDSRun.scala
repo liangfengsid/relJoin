@@ -41,7 +41,7 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
   var injectStats = false
   var command = "execute"
   var runTimes = 1
-  var joinStr = "AdaptJoin"
+  var joinStr = "RelJoin"
 
   def createTable(
         spark: SparkSession,
@@ -152,14 +152,14 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     "spark.sql.join.forceApplyShuffledHashJoin" -> "true",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "false")
 
-  val aqeBroadcastHashJoinConf = Map(
+  val aqeJoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.SKEW_JOIN_ENABLED.key -> "false",
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true")
 
-  val aqeAdaptJoinConf = Map(
+  val aqeRelJoinConf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
@@ -167,7 +167,7 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true",
     SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true")
 
-  val aqeAdaptJoinW10Conf = Map(
+  val aqeRelJoinW10Conf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
@@ -176,7 +176,7 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     SQLConf.ADAPTIVE_COST_JOIN_ENABLE.key -> "true",
     SQLConf.ADAPTIVE_NETWORK_WEIGHT.key -> "10")
 
-  val aqeAdaptJoinW100Conf = Map(
+  val aqeRelJoinW100Conf = Map(
     SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "10485760",
     SQLConf.ADAPTIVE_OPTIMIZE_SKEWS_IN_REBALANCE_PARTITIONS_ENABLED.key -> "false",
     SQLConf.COALESCE_PARTITIONS_ENABLED.key -> "false",
@@ -188,19 +188,19 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
   val strConfMap = Map(
     "ShuffleSortJoin" -> shuffleSortJoinConf,
     "ShuffleHashJoin" -> shuffleHashJoinConf,
-    "BroadcastHashJoin" -> aqeBroadcastHashJoinConf,
-    "AdaptJoin" -> aqeAdaptJoinConf,
-    "AdaptJoinW100" -> aqeAdaptJoinW100Conf,
-    "AdaptJoinW10" -> aqeAdaptJoinW10Conf)
+    "AQEJoin" -> aqeJoinConf,
+    "RelJoin" -> aqeRelJoinConf,
+    "RelJoinW100" -> aqeRelJoinW100Conf,
+    "RelJoinW10" -> aqeRelJoinW10Conf)
 
   def main(args: Array[String]): Unit = {
-    val options = (0 to 1).map(i => if (i < args.length) Some(args(i)) else None)
+    val options = (0 to 3).map(i => if (i < args.length) Some(args(i)) else None)
 
     options.toArray match {
       case Array(dataPath, c, join, times) =>
         tpcdsDataPath = dataPath.getOrElse("")
         command = c.getOrElse("execute")
-        joinStr = join.getOrElse("AdaptJoin")
+        joinStr = join.getOrElse("RelJoin")
         runTimes = times.getOrElse("1").toInt
       case Array(dataPath, inject) =>
         tpcdsDataPath = dataPath.getOrElse("")
@@ -211,7 +211,7 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
     }
 
     val allJoinConfCombinations = (1 to runTimes)
-      .map(_ => strConfMap.getOrElse(joinStr, aqeAdaptJoinConf))
+      .map(_ => strConfMap.getOrElse(joinStr, aqeRelJoinConf))
 
     val sparkBuilder = SparkSession
       .builder
@@ -253,9 +253,10 @@ object TPCDSRun extends TPCDSRunBase with SQLQueryTestHelper {
           System.gc()  // Workaround for GitHub Actions memory limitation, see also SPARK-37368
           val confName = if (conf == shuffleSortJoinConf) s"ShuffleSortJoin"
           else if (conf == shuffleHashJoinConf) s"ShuffleHashJoin"
-          else if (conf == aqeBroadcastHashJoinConf) s"BroadcastHashJoin"
-          else if (conf == aqeAdaptJoinConf) s"AdaptJoin"
-          else if (conf == aqeAdaptJoinW10Conf) s"AdaptJoinW10"
+          else if (conf == aqeJoinConf) s"AQEJoin"
+          else if (conf == aqeRelJoinConf) s"RelJoin"
+          else if (conf == aqeRelJoinW10Conf) s"RelJoinW10"
+          else if (conf == aqeRelJoinW100Conf) s"RelJoinW100"
           else s"unknownJoinConf"
           if (command == "execute") {
             runQuery(spark, name, confName, queryString, conf)
