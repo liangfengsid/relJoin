@@ -16,10 +16,15 @@ We use the TPC-DS benchmark to evaluate the performance of RelJoin.
 TPC-DS is a representative bench- mark with complex decision workloads 
 for general big data processing systems. 
 We run 97 test queries integrated by SparkSQL excluding some flaky tests. 
-Unless otherwise specified, we test with w = 1 on a unit-scaled TPC-DS dataset, 
-which means the text size of all datasets is about 1 GB and that of the largest dataset is about 386 MB. 
+Unless otherwise specified, we test with w = 1.
+The size scale of the benchmark can be 1, 10, and 100, with the details listed in the following table.
 Datasets are transformed to the parquet format. 
 Each query runs three times for all tests and the average results are presented.
+
+|Scale | Total Size | Largest Size | Node | Executor |
+| 1 | 1.2 GB | 386 MB | 16 GB | 4 GB/1 core |
+| 10 | 12 GB | 3.7 GB | 32 GB | 14 GB/2 cores |
+| 100 | 96 GB | 38 GB | 32 GB | 14 GB/2 cores |
 
 We compare the query completion time of RelJoin with that of various 
 distributed join method strategies, namely ShuffleSort, ShuffleHash, and AQE. 
@@ -34,6 +39,13 @@ The detailed descriptions of the strategies are listed in the table.
 
 ## Data
 ### Query completion time
+* Results of query completion completion time running ShuffleSort, ShuffleHash, AQE, and RelJoin
+in the TPC-DS benchmark of different size scales three times: 
+|Strategy | scale-1 | scale-10 | scale-100|
+|ShuffleSort | [queryShuffleSort.txt](./data/queryShuffleSort.txt) | | |
+|ShuffleHash | [queryShuffleHash.txt](./data/queryShuffleHash.txt) | | |
+|AQE         | [queryAQE.txt](./data/queryAQE.txt)                 | | |
+|RelJoin     | [queryRelJoin.txt](./data/queryRelJoin.txt)         | | |
 * Results of query completion completion time running ShuffleSort three times: 
 [queryShuffleSort.txt](./data/queryShuffleSort.txt).
 * Results of query completion completion time running ShuffleHash three times: 

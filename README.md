@@ -1,4 +1,4 @@
-# stage
+# RelJoin
 
 RelJoin implements a cost-based distributed join method optimization rule on top 
 of Spark SQL. It selects optimal join methods for logical joins when planning 
