@@ -39,21 +39,16 @@ The detailed descriptions of the strategies are listed in the table.
 
 ## Data
 ### Query completion time
-* Results of query completion completion time running ShuffleSort, ShuffleHash, AQE, and RelJoin
+* Results of query completion completion time running ShuffleSort, ShuffleHash, AQE, and RelJoin(w=1)
 in the TPC-DS benchmark of different size scales three times: 
+
 |Strategy | scale-1 | scale-10 | scale-100|
-|ShuffleSort | [queryShuffleSort.txt](./data/queryShuffleSort.txt) | | |
-|ShuffleHash | [queryShuffleHash.txt](./data/queryShuffleHash.txt) | | |
-|AQE         | [queryAQE.txt](./data/queryAQE.txt)                 | | |
-|RelJoin     | [queryRelJoin.txt](./data/queryRelJoin.txt)         | | |
-* Results of query completion completion time running ShuffleSort three times: 
-[queryShuffleSort.txt](./data/queryShuffleSort.txt).
-* Results of query completion completion time running ShuffleHash three times: 
-[queryShuffleHash.txt](./data/queryShuffleHash.txt).
-* Results of query completion completion time running AQE three times: 
-[queryAQE.txt](./data/queryAQE.txt).
-* Results of query completion completion time running RelJoin with w = 1 three times: 
-[queryRelJoin.txt](./data/queryRelJoin.txt).
+|---------|---------|----------|----------|
+|ShuffleSort | [queryShuffleSort.txt](./data/queryShuffleSort.txt) |[queryShuffleSortScale10.txt](./data/queryShuffleSortScale10.txt) | [queryShuffleSortScale100.txt](./data/queryShuffleSortScale100.txt)|
+|ShuffleHash | [queryShuffleHash.txt](./data/queryShuffleHash.txt) |[queryShuffleHashScale10.txt](./data/queryShuffleHashScale10.txt) | [queryShuffleHashScale100.txt](./data/queryShuffleHashScale100.txt)|
+|AQE         | [queryAQE.txt](./data/queryAQE.txt)                 |[queryAQEScale10.txt](./data/queryAQEScale10.txt)  |[queryAQEScale100.txt](./data/queryAQEScale100.txt)  |
+|RelJoin     | [queryRelJoin.txt](./data/queryRelJoin.txt)         |[queryRelJoinScale10.txt](./data/queryRelJoinScale10.txt)  |[queryRelJoinScale100.txt](./data/queryRelJoinScale100.txt)  |
+
 * Results of query completion completion time running RelJoin w = 10 three times: 
 [queryRelJoinW10.txt](./data/queryRelJoinW10.txt).
 * Results of query completion completion time running RelJoin w = 100000 three times: 
